@@ -1,0 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["pry", "app"]
+
+[profile.dev]
+# Snippets are compiled by `rustc` with the same flags; keep both cheap.
+debug = "line-tables-only"

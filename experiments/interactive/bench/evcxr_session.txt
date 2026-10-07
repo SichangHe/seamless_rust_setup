@@ -1,0 +1,12 @@
+:timing
+:dep serde_json = "1"
+:dep regex = "1"
+let json = r#"[{"id":1,"customer":"ann@example.com","total_cents":1250},{"id":2,"customer":"bob@example.com","total_cents":999}]"#;
+let orders: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+let re = regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[a-z]+$").unwrap();
+println!("{} orders", orders.len());
+for o in &orders { println!("{} valid={}", o["customer"], re.is_match(o["customer"].as_str().unwrap())); }
+let total: i64 = orders.iter().map(|o| o["total_cents"].as_i64().unwrap()).sum(); println!("{total}");
+println!("{}", serde_json::to_string_pretty(&orders[0]).unwrap());
+println!("{}", orders.len() + 1);
+println!("{}", orders.len() + 2);

@@ -1,0 +1,11 @@
+[package]
+name = "reloadable"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+# `dylib`: a Rust-ABI dynamic library we reload while the runner keeps running.
+crate-type = ["dylib"]
+
+[dependencies]
+types = { path = "../types" }

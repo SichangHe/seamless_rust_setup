@@ -1,2 +1,12 @@
 target/
 *.log
+experiments/compile_speed/tools/
+experiments/compile_speed/work/
+experiments/compile_speed/results/
+experiments/artifact_pool/work/
+experiments/artifact_pool/results/
+experiments/dependency_bloat/cases/
+experiments/dependency_bloat/results/
+experiments/dependency_bloat/results.csv
+__pycache__/
+state.lock

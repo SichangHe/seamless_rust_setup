@@ -1,0 +1,5 @@
+[build]
+# 🧑 "much better interactive use by editing and loading a file or files"
+# One shared `libstd.so` and `libapp.so` between the host binary and every
+# loaded snippet, so values can cross the boundary.
+rustflags = ["-C", "prefer-dynamic"]

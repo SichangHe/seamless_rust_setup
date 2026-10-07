@@ -1,0 +1,3 @@
+pry::snippet!(|_st: &mut app::State| {
+    unknown_function();
+});

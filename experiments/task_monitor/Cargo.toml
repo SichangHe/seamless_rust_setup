@@ -1,0 +1,6 @@
+[workspace]
+members = ["taskmon"]
+resolver = "2"
+
+[profile.release]
+strip = true

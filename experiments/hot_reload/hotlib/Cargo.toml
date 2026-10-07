@@ -1,0 +1,7 @@
+[workspace]
+members = ["lib", "runner", "types"]
+resolver = "2"
+
+[profile.dev]
+# Keep the reloaded dylib building fast.
+opt-level = 0

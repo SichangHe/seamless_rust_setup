@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Usage: pry-eval DIR FILE.rs   -> prints snippet output, exit 0 only on `ok`
+#        pry-eval DIR --continue -> resume the paused program
+# DIR is the directory the host passed to `pry::session`.
+set -euo pipefail
+if [ "$#" -ne 2 ]; then
+    echo 'usage: pry-eval DIR FILE.rs|--continue' >&2
+    exit 2
+fi
+dir=$1 src=$2
+mkdir -p "$dir/req" "$dir/res"
+id=$(date +%s%N)-$$
+if [ "$src" = --continue ]; then
+    : >"$dir/req/$id.continue"
+    exit 0
+fi
+cp "$src" "$dir/req/$id.tmp" && mv "$dir/req/$id.tmp" "$dir/req/$id.rs"
+status="$dir/res/$id.status"
+deadline=$((SECONDS + ${PRY_TIMEOUT_SECONDS:-30}))
+until [ -e "$status" ]; do
+    if (( SECONDS >= deadline )); then
+        echo '# pry: timeout; request may still execute' >&2
+        exit 124
+    fi
+    sleep 0.002
+done
+cat "$dir/res/$id.out"
+read -r st <"$status"
+[ -n "${PRY_TIMING:-}" ] && sed -n '2s/^/# compile_ms run_ms: /p' "$status" >&2
+[ "$st" = ok ] || { echo "# pry: $st" >&2; exit 1; }
