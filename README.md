@@ -12,6 +12,7 @@ Start with the [findings and setup](docs/index.md). Each study separates measure
 - [file-based interactive debugging](docs/interactive.md)
 - [hot reload](docs/hot-reload.md)
 - [asynchronous task monitoring](docs/task-monitor.md)
+- [integrated file and task control](docs/agent-dev.md)
 - [dependency and binary size](docs/dependency-bloat.md)
 
 The experiments target Linux. Each study gives its own prerequisites and commands. Toolchains, dependency features, and linkers affect the results; a warm build does not imply that arbitrary changes compile instantly.

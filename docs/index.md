@@ -8,7 +8,8 @@ The work is organized around the human's requested feedback loop: edit a file, e
 - [file-based interaction](interactive.md): compile and execute a file against a paused program's state
 - [hot reload](hot-reload.md): retain state while replacing library code
 - [task monitoring](task-monitor.md): inspect registered asynchronous tasks and request cancellation
+- [integrated file and task control](agent-dev.md): submit Rust files, report compiler failures, and observe cancellation in one host
 - [dependency size](dependency-bloat.md): measure feature choices and smaller alternatives
 - [research agenda](research-agenda.md): connect the prototypes and test remaining claims
 
-The experiments are separate rather than one integrated runtime. A follow-up integration should preserve the tested limitations: reloadable interfaces need a defined compatibility boundary; asynchronous cancellation requires the task to yield; artifact reuse depends on compatible compiler inputs. Details and source evidence belong to the corresponding study.
+Only the file (`pry`) and task (`taskmon`) experiments now share one runnable host. The other studies remain separate. Reloadable interfaces need a defined compatibility boundary; asynchronous cancellation requires the task to yield; artifact reuse depends on compatible compiler inputs. Details and source evidence belong to the corresponding study.

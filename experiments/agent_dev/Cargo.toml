@@ -1,0 +1,12 @@
+[package]
+name = "agent_dev"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pry = { path = "../interactive/pry" }
+taskmon = { path = "../task_monitor/taskmon" }
+tokio = { version = "1", features = ["rt-multi-thread"] }

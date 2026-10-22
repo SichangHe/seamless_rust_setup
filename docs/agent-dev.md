@@ -1,0 +1,45 @@
+# One file-based development control path
+(authored by agents unless marked 🧑)
+
+- 🧑 scope: "connect the existing file request and task endpoints before adding another runtime or compiler abstraction"
+  - source: [research agenda](research-agenda.md)
+- reproduction: `bash experiments/agent_dev/smoke.sh` from repository root
+  - requires Linux, Rust, Cargo, Bash and `timeout`; dependencies must be cached or downloadable
+  - [host and smoke client](../experiments/agent_dev/src/main.rs) reuse `pry` and `taskmon` in one process
+  - script builds with `--locked` and `-C prefer-dynamic`, supplies library paths, creates a private temporary session, and kills the host and removes the session on exit
+  - build products remain in ignored `target/` directories
+- design: one host owns a `u64` state and registers a pending future and a future whose poll spins forever
+  - main thread pauses in `pry::session`; two Tokio workers run the tasks
+  - smoke waits until the infinite poll has started before submitting source
+  - source requests: atomically rename `ID.tmp` to `SESSION/req/ID.rs`
+    - use unique IDs
+    - `SESSION/res/ID.out` contains output or diagnostics; `ID.status` supplies outcome and compiler/execution milliseconds
+    - smoke prints request ID, outcome, edit-to-result time and compiler time; compiler time is `unavailable` when the status has no timing line, including rustc spawn failure
+    - outcomes identify compiler errors; the client does not report a separate failed stage
+  - task requests: atomically rename `ID.tmp` to `SESSION/tasks/req/ID.cmd`
+    - contents: `top 10 20` or `kill ID`; atomic reply: `SESSION/tasks/res/ID.out`
+    - new `Monitor::serve_files` reuses the existing registry and command handler; socket transport remains available
+    - separate registry and file server threads answer while a runtime worker cannot yield
+    - use unique request IDs and one server per private session; filesystem errors are logged or returned as replies while serving continues
+    - requests are renamed to `.processing` and removed before execution, so a failed reply cannot repeat a command; failed cleanup leaves an unprocessed `.processing` file
+  - smoke mutates state, submits invalid Rust, verifies retained state, snapshots tasks, acknowledges both abort requests, confirms pending-task removal and observes the spinning task remaining
+- measurements: one run on 2026-10-22, x86_64 Linux, rustc 1.97.1, development profile, warm dependencies
+  - edit-to-result begins immediately before writing the source and ends after reading status and output
+    - includes submission, polling, compiler, loading and execution; excludes human editing time and initial host build
+  - compiler time is `pry`'s integer milliseconds around the `rustc` subprocess, including linking
+  - mutation: edit-to-result 84.880 ms; compiler 82 ms
+  - invalid Rust: edit-to-result 33.461 ms; compiler 28 ms; `status=compile_error`
+  - inspection after failure: edit-to-result 84.964 ms; compiler 82 ms; output `state=1`
+  - snapshot: `2 tasks`; spinning task `100.1% inside poll`; pending task `0.0%`
+  - pending abort: `abort requested for task 1`, followed by absence from a snapshot
+  - spinning abort: `abort requested for task 2`, then `cancel_noncompleting observation_ms=258.948 (still registered)`
+  - socket creation in the execution sandbox returned `Operation not permitted`; this run used the file transport
+- claims and limits
+  - establishes the combined request path for this instrumented application; these individual observations establish no latency distribution or instant-compilation guarantee
+  - noncompletion means still registered throughout a bounded observation after acknowledgement
+    - the deliberately infinite poll cannot process Tokio cancellation; smoke terminates the host process during cleanup
+  - state belongs to the paused main thread; this does not provide arbitrary task-local state access
+  - trusted snippets must match the host build and return without retaining the borrow
+    - inherits the [interactive boundary and capture limits](interactive.md) and [task observation and cancellation limits](task-monitor.md)
+  - file server processes commands sequentially; responses accumulate until session cleanup; host has no compiler or snippet execution deadline
+  - next measurement: repeated representative edits with median/tail latency and instrumentation overhead

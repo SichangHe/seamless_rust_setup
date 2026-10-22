@@ -5,6 +5,7 @@
 use std::{
     collections::BTreeMap,
     fmt::Write as _,
+    fs,
     future::{poll_fn, Future},
     io::{self, BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -64,6 +65,66 @@ pub struct Monitor {
 }
 
 impl Monitor {
+    /// Serve `ID.cmd` files in `dir/req`, publishing replies as `dir/res/ID.out`.
+    /// Submit unique IDs by atomic rename in a private directory. Only one server
+    /// may use the directory; malformed commands receive the usual command help.
+    pub fn serve_files(dir: impl AsRef<Path>) -> io::Result<Self> {
+        let req = dir.as_ref().join("req");
+        let res = dir.as_ref().join("res");
+        fs::create_dir_all(&req)?;
+        fs::create_dir_all(&res)?;
+        let (registry, msgs) = channel();
+        thread::Builder::new()
+            .name("taskmon-registry".into())
+            .spawn(move || run_registry(msgs))?;
+        let monitor = Self { registry };
+        let registry = monitor.registry.clone();
+        thread::Builder::new()
+            .name("taskmon-files".into())
+            // 🧑 "Handle errors per entry ... keep serving" ... "ensure a failed reply write does not cause a `kill` command to be re-executed"
+            .spawn(move || loop {
+                let entries = match fs::read_dir(&req) {
+                    Ok(entries) => entries,
+                    Err(error) => {
+                        eprintln!("taskmon: {}: {error}", req.display());
+                        thread::sleep(Duration::from_millis(2));
+                        continue;
+                    }
+                };
+                for entry in entries {
+                    let path = match entry {
+                        Ok(entry) => entry.path(),
+                        Err(error) => {
+                            eprintln!("taskmon: directory entry: {error}");
+                            continue;
+                        }
+                    };
+                    if !path.extension().is_some_and(|ext| ext == "cmd") {
+                        continue;
+                    }
+                    let result = (|| -> io::Result<()> {
+                        let claimed = path.with_extension("processing");
+                        fs::rename(&path, &claimed)?;
+                        let source = fs::read_to_string(&claimed);
+                        fs::remove_file(&claimed)?;
+                        let reply = match source {
+                            Ok(source) => command_reply(&source, &registry),
+                            Err(error) => format!("read request: {error}\n"),
+                        };
+                        let output = res.join(path.file_name().ok_or(io::ErrorKind::InvalidInput)?);
+                        let temporary = output.with_extension("tmp");
+                        fs::write(&temporary, reply)?;
+                        fs::rename(temporary, output.with_extension("out"))
+                    })();
+                    if let Err(error) = result {
+                        eprintln!("taskmon: {}: {error}", path.display());
+                    }
+                }
+                thread::sleep(Duration::from_millis(2));
+            })?;
+        Ok(monitor)
+    }
+
     /// Start the registry and the socket server at `socket_path` on their own OS threads,
     /// so they answer even when every runtime worker is blocked.
     pub fn serve(socket_path: impl AsRef<Path>) -> io::Result<Self> {
@@ -186,33 +247,32 @@ fn handle_client(stream: UnixStream, registry: &Sender<Msg>) -> io::Result<()> {
     let mut out = stream.try_clone()?;
     for line in BufReader::new(stream).lines() {
         let line = line?;
-        let mut words = line.split_whitespace();
-        let reply = match (words.next(), words.next(), words.next()) {
-            (Some("top"), interval_ms, n_rows) => {
-                let interval_ms = interval_ms.and_then(|w| w.parse().ok()).unwrap_or(1000);
-                let n_rows = n_rows.and_then(|w| w.parse().ok()).unwrap_or(20);
-                let interval = Duration::from_millis(interval_ms.max(1));
-                let before = snapshot(registry);
-                let start = Instant::now();
-                thread::sleep(interval);
-                match (before, snapshot(registry)) {
-                    (Some(before), Some(after)) => {
-                        render_top(&before, after, start.elapsed(), n_rows)
-                    }
-                    _ => "registry is gone\n".into(),
-                }
-            }
-            (Some("kill"), Some(id), None) => {
-                match id.parse().ok().and_then(|id| kill(registry, id)) {
-                    Some(true) => format!("abort requested for task {id}\n"),
-                    _ => format!("no task {id}\n"),
-                }
-            }
-            _ => HELP.into(),
-        };
-        out.write_all(reply.as_bytes())?;
+        out.write_all(command_reply(&line, registry).as_bytes())?;
     }
     Ok(())
+}
+
+fn command_reply(line: &str, registry: &Sender<Msg>) -> String {
+    let mut words = line.split_whitespace();
+    match (words.next(), words.next(), words.next()) {
+        (Some("top"), interval_ms, n_rows) => {
+            let interval_ms = interval_ms.and_then(|w| w.parse().ok()).unwrap_or(1000);
+            let n_rows = n_rows.and_then(|w| w.parse().ok()).unwrap_or(20);
+            let interval = Duration::from_millis(interval_ms.max(1));
+            let before = snapshot(registry);
+            let start = Instant::now();
+            thread::sleep(interval);
+            match (before, snapshot(registry)) {
+                (Some(before), Some(after)) => render_top(&before, after, start.elapsed(), n_rows),
+                _ => "registry is gone\n".into(),
+            }
+        }
+        (Some("kill"), Some(id), None) => match id.parse().ok().and_then(|id| kill(registry, id)) {
+            Some(true) => format!("abort requested for task {id}\n"),
+            _ => format!("no task {id}\n"),
+        },
+        _ => HELP.into(),
+    }
 }
 
 fn snapshot(registry: &Sender<Msg>) -> Option<Vec<Sample>> {

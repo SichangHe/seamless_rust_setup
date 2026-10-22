@@ -1,11 +1,11 @@
 # Research agenda
 (authored by agents unless marked 🧑)
 
-This is a proposed integration, not an implemented environment. The human's requested capabilities are in [the original request](../HUMAN_REQUEST.md); the individual studies establish what the prototypes actually do.
+The file and task control paths have a [runnable integration](agent-dev.md); a complete development environment remains proposed. The human's requested capabilities are in [the original request](../HUMAN_REQUEST.md); the individual studies establish what the prototypes actually do.
 
 ## One file-based control path
 
-An agent edits a normal Rust file and submits it to a running development process. The process reports compilation diagnostics, execution output, and a request identifier. A separate task endpoint supplies named task snapshots and cancellation acknowledgements. The existing [interactive](interactive.md) and [monitor](task-monitor.md) experiments test these operations independently. Integrating them should first reproduce both operations in one real application, including compilation failure and cancellation that never completes.
+An agent edits a normal Rust file and submits it to a running development process. The process reports compilation diagnostics, execution output, and a request identifier. A separate task endpoint supplies named task snapshots and cancellation acknowledgements. The existing [interactive](interactive.md) and [monitor](task-monitor.md) experiments also run together in [one application](agent-dev.md), including compilation failure and a deliberately infinite poll that remains registered after cancellation throughout a bounded observation.
 
 The host should own state and the control channel. Reloaded code should receive only a deliberately defined boundary. The current same-build Rust boundary is an experiment; a stable boundary needs versioned C-compatible values or serialized messages. Changing types requires migration or restart. Measure edit-to-result latency separately from compiler time and expose the stage that failed.
 
@@ -21,4 +21,4 @@ The host should own state and the control channel. Reloaded code should receive 
 
 ## Completion boundary
 
-The repository delivers studies and runnable prototypes. It does not establish instant compilation for arbitrary Rust programs, arbitrary injection into uninstrumented processes, a global public binary service, or forced termination of an individual non-yielding task. Those claims need the experiments above. The next concrete implementation should connect the existing file request and task endpoints before adding another runtime or compiler abstraction.
+The repository delivers studies and runnable prototypes. The file request and task endpoints now share one application, with a smoke script checking successful submission, compiler diagnostics with a compile-error status, retained state, snapshots, cancellation acknowledgement and completion, and observed cancellation noncompletion throughout a bounded observation window (~250 ms). It records edit-to-result latency separately from compiler time when available. This completes the initial integration boundary; repeated representative edits and median/tail latency measurements remain next. It does not establish instant compilation for arbitrary Rust programs, arbitrary injection into uninstrumented processes, a global public binary service, or forced termination of an individual non-yielding task. Those claims need the experiments above.
