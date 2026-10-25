@@ -50,7 +50,20 @@
   - its REPL README calls it "A Rust REPL (Read-Eval-Print loop)"
     - [REPL README](https://github.com/evcxr/evcxr/blob/main/evcxr_repl/README.md)
   - recommendation: evaluate Evcxr for standalone file evaluation; retain explicit host pause points for live borrowed state
-    - Evcxr was researched, not benchmarked in this run
+  - file-fed example: `evcxr --disable-readline < experiments/interactive/bench/evcxr_session.txt`
+    - observed on 2026-10-24 with Evcxr 0.21.1 and rustc 1.97.1; local startup configuration enabled `:sccache 1`
+    - dependency setup reported `Took 4224ms` for serde_json and `Took 7786ms` for regex
+    - final two expressions reused session values and reported `Took 284ms` and `Took 207ms`
+    - both email checks returned `valid=true`; the summed order total was `2249`
+    - explicit `let re: regex::Regex` fixes Evcxr's failure to infer this variable in the original example
+    - these are Evcxr command timings, not process-start measurements or a controlled comparison with the injected snippets
+- standalone file execution: `cargo +nightly -Zscript experiments/interactive/bench/script.rs`
+  - observed on 2026-10-24 with rustc 1.101.0-nightly, commit `8d1a76430`, and Cargo 1.101.0-nightly
+  - `/usr/bin/time` reported `wall_s=3.72` on the first observed invocation, `wall_s=0.04` unchanged, and `wall_s=0.21` after changing the printed marker from 0 to 1
+    - includes process startup, any Cargo work, and execution; existing caches were retained, so the first invocation is not a cold-build measurement
+    - each invocation starts a new program; warm reuse does not preserve runtime state
+  - both email checks returned `valid=true`; the edited run printed `edit marker 1`; source restored afterwards
+  - single observations under shared machine load; toolchains and workloads differ from the persistent-host experiment
 - research next: attach through explicit application control points and a versioned state boundary
   - recommendation: move untrusted evaluation to a separate process with serialized state
   - tradeoff: serialized state loses arbitrary direct access to live Rust references
