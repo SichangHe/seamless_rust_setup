@@ -8,7 +8,8 @@ use reloadable::State;
 
 #[hot_lib_reloader::hot_module(
     dylib = "reloadable",
-    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug")
+    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug"),
+    loaded_lib_name_template = "{lib_name}-hot-{pid}-{load_counter}"
 )]
 mod hot {
     pub use reloadable::State;

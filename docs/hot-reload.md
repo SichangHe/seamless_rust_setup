@@ -4,10 +4,22 @@
 - 🧑 goal: "code hot reloading ... loading and running dylib or something at run time to dynamically run code"
   - source: [human request](../HUMAN_REQUEST.md)
 - working prototype: change function bodies while the runner retains its state
+  - interactive use from the repository root: `bash experiments/hot_reload/run.sh`
+    - edit the body of `step` in `experiments/hot_reload/hotlib/lib/src/lib.rs`
+    - in another terminal: `bash experiments/hot_reload/run.sh --build-only`
+    - the running process loads the rebuilt library and retains its counter; Ctrl-C stops it
+    - launcher builds with dynamic Rust dependencies and configures the loader path
+    - target directory is fixed to the workspace's `target`, matching the runner's compiled library path
+    - compilation errors leave the previously built library running; rebuild after fixing the source
   - reproduction: `bash experiments/hot_reload/smoke.sh`
   - [runner](../experiments/hot_reload/hotlib/runner/src/main.rs) calls a reloadable `step(&mut State)` every 300 ms
   - [shared state](../experiments/hot_reload/hotlib/types/src/lib.rs) stays in the runner
-  - smoke script builds, starts runner, changes `v1` to `v2`, rebuilds library, verifies increasing count, then restores source
+  - smoke script builds, starts two runners, changes `v1` to `v2`, rebuilds library, verifies increasing count in both, then restores source
+  - each process uses its own copied library name, including PID and reload count
+    - prevents a second runner from overwriting a library already mapped by the first
+    - reproduced before the fix: starting a second runner without editing code terminated the first with SIGSEGV
+    - hot-lib-reloader's default naming is `None => format!("{lib_name}-hot-{load_counter}")`; its loader uses `fs::copy(&watched_lib_file, &loaded_lib_file)?;`
+      - source: [hot-lib-reloader 0.7.0, `LibReloader::new` and `watched_and_loaded_library_paths`](https://docs.rs/crate/hot-lib-reloader/0.7.0/source/src/lib_reloader.rs)
   - use `RUSTFLAGS='-C prefer-dynamic'` for this workspace
   - measured 2026-10-06 on x86_64 Linux with rustc 1.97.1
     - warm library rebuild: Cargo reported 0.11 s

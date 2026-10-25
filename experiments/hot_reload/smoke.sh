@@ -10,8 +10,14 @@ work=$(mktemp -d)
 cp lib/src/lib.rs "$work/original.rs"
 target/debug/runner >"$work/runner.log" 2>&1 &
 runner_pid=$!
+second_runner_pid=""
 cleanup() {
     kill "$runner_pid" 2>/dev/null || true
+    if [[ -n $second_runner_pid ]]; then
+        kill "$second_runner_pid" 2>/dev/null || true
+        wait "$second_runner_pid" 2>/dev/null || true
+    fi
+    wait "$runner_pid" 2>/dev/null || true
     cp "$work/original.rs" lib/src/lib.rs
     timeout 180s cargo build --locked -p reloadable >/dev/null 2>&1
     rm -rf "$work"
@@ -22,19 +28,26 @@ if ! grep -q 'v1: count=' "$work/runner.log"; then
     cat "$work/runner.log" >&2
     exit 1
 fi
+target/debug/runner >"$work/second-runner.log" 2>&1 &
+second_runner_pid=$!
+sleep 1
+kill -0 "$runner_pid" "$second_runner_pid"
 sed 's/v1: count=/v2: count=/' "$work/original.rs" > lib/src/lib.rs
 start_ms=$(date +%s%3N)
 timeout 180s cargo build --locked -p reloadable
 for _ in {1..100}; do
-    if grep -q 'v2: count=' "$work/runner.log"; then
+    if grep -q 'v2: count=' "$work/runner.log" && grep -q 'v2: count=' "$work/second-runner.log"; then
         end_ms=$(date +%s%3N)
         echo "build_and_observe_ms=$((end_ms - start_ms))"
-        cat "$work/runner.log"
-        awk '/v1: count=/{split($0,a,"="); before=a[2]} /v2: count=/{split($0,a,"="); if(a[2] > before) ok=1} END{exit !ok}' "$work/runner.log"
+        kill -0 "$runner_pid" "$second_runner_pid"
+        for log in "$work/runner.log" "$work/second-runner.log"; do
+            cat "$log"
+            awk '/v1: count=/{split($0,a,"="); before=a[2]; initial=1} /v2: count=/{split($0,a,"="); if(initial && a[2] > before) ok=1} END{exit !ok}' "$log"
+        done
         exit 0
     fi
     sleep .05
 done
-cat "$work/runner.log" >&2
+cat "$work/runner.log" "$work/second-runner.log" >&2
 echo 'new code did not appear in running process' >&2
 exit 1
