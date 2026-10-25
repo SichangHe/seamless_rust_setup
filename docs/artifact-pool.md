@@ -39,6 +39,25 @@ The script generates isolated projects and locks matching existing dependencies.
 
 `n_compiled` counts Cargo's “Compiling” messages, so it measures Cargo compiler requests rather than sccache misses. `n_lock_waits` counts all Cargo “Blocking” messages, including package-cache locks; it does not distinguish which lock caused waiting. Earlier concurrent observations used sequential process collection and overestimated early completion times; the harness now collects process completion concurrently. Sequential rows above are unaffected.
 
+## Source paths and compiler flags
+
+The smaller portability probe fetches memchr 2.8.3 into one isolated Cargo home, copies it to another, and compiles only that public crate. Every build uses a fresh output directory and one shared sccache cache. Run it with a new work directory, registry access, Cargo, rustc, and sccache on PATH; its Unix socket requires a short work-directory path:
+
+```sh
+timeout 180s python3 -u experiments/artifact_pool/portability.py /tmp/pool-paths
+```
+
+Measured on this machine with rustc 1.97.1 and sccache 0.12.0:
+
+- The cold build missed; repeating with the same registry root hit
+- Moving to the copied Cargo home missed; repeating there hit
+- Adding `-Copt-level=1` missed; repeating those flags hit; restoring the original flags hit the earlier variant
+- Giving both builds the identical two `--remap-path-prefix` mappings, one per source root to the same replacement path, still missed once in each root
+
+The Cargo-home move changes both source paths and Cargo environment variables. To distinguish those effects, the probe also invokes sccache/rustc directly from each memchr source directory with all `CARGO_` variables removed, the same relative `src/lib.rs` input, and otherwise identical arguments. That test likewise missed when the working directory changed and hit when repeated there. Identical remapping arguments did not enable reuse between the two source directories. Full per-case build output and cache counters remain in the work directory.
+
+This matches sccache 0.12.0's [cache-key implementation](https://github.com/mozilla/sccache/blob/v0.12.0/src/compiler/rust.rs#L1449-L1545): “The cwd of the compile. This will wind up in the rlib.” The same code notes: “TODO: there will be full paths here, it would be nice to normalize them so we can get cross-machine cache hits.” Rustc path remapping alone therefore does not make this tested cache portable across registry locations. A shared remote cache would still need matching compiler inputs, environment, and source-directory layout. A fixed build environment is a candidate solution, not something this test establishes across machines; no remote backend or second machine was used.
+
 ## Existing mechanisms and global-pool proposal
 
 The official [Cargo configuration](https://doc.rust-lang.org/cargo/reference/config.html#buildbuild-dir) defines `build.build-dir` as: “The directory where intermediate build artifacts will be stored.” This setting is present in current stable documentation and worked with our stable toolchain; a nightly flag is unnecessary for the basic shared directory.
@@ -47,4 +66,4 @@ Cargo's [build cache documentation](https://doc.rust-lang.org/cargo/reference/bu
 
 Agent recommendation: begin with a trusted same-user shared intermediate directory and measure contention. Keep final executables separate to avoid projects overwriting identically named outputs. A global distributed public pool is a separate proposal: artifacts need matching compiler, target, dependency versions/features, code-generation options, and build-script inputs. Matching crate name/version alone is insufficient. Reusing native code also introduces a trust boundary; the pool must authenticate producers or rebuild/verify artifacts before consumption. These requirements have not been implemented or evaluated here.
 
-A useful next experiment is separate-process concurrent builds with corrected timing, cache-hit counters, changed rustflags/toolchains, build-script environment changes, and bounded cache eviction. It should separate storage saved by pooling from storage merely moved into a second cache.
+Further agent recommendations are testing a fixed source layout across machines, changed toolchains, build-script environment changes, and bounded cache eviction. Measure total storage, including any second cache.
