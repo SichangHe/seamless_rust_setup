@@ -13,12 +13,15 @@ const DEADLINE: Duration = Duration::from_secs(30);
 // 🧑 "build one integrated runnable experiment ... reusing those crates"
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
-    let mode = args.next().ok_or("usage: agent_dev host|smoke SESSION")?;
+    let mode = args
+        .next()
+        .ok_or("usage: agent_dev host|smoke|bench SESSION")?;
     let dir = args.next().ok_or("missing session directory")?;
     match mode.as_str() {
         "host" => host(Path::new(&dir)),
         "smoke" => smoke(Path::new(&dir)),
-        _ => Err("expected host or smoke".into()),
+        "bench" => bench(Path::new(&dir)),
+        _ => Err("expected host, smoke or bench".into()),
     }
 }
 
@@ -148,6 +151,51 @@ fn smoke(dir: &Path) -> Result<()> {
     println!(
         "never-yields: cancel_noncompleting observation_ms={:.3} (still registered)",
         start.elapsed().as_secs_f64() * 1000.0
+    );
+    Ok(())
+}
+
+/// Exercise fresh source edits and retained state in one running host.
+// 🧑 "I want instant compilation after initial cold start"
+fn bench(dir: &Path) -> Result<()> {
+    wait_until(|| dir.join("req").is_dir())?;
+    let mut elapsed_ms = Vec::new();
+    let mut expected_state = 0_u64;
+    for edit in 1..=30_u64 {
+        expected_state += edit;
+        let source = format!(
+            "pry::snippet!(|state: &mut u64| {{ *state += {edit}; println!(\"state={{}}\", *state); }});"
+        );
+        let start = Instant::now();
+        let output = submit(dir, &format!("edit_{edit}"), &source, "ok")?;
+        elapsed_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+        if output.trim() != format!("state={expected_state}") {
+            return Err(format!("edit {edit}: incorrect retained state: {output}").into());
+        }
+        if edit % 10 == 0 {
+            submit(
+                dir,
+                &format!("broken_{edit}"),
+                "this is not Rust",
+                "compile_error",
+            )?;
+        }
+    }
+    let output = submit(
+        dir,
+        "final_inspect",
+        "pry::snippet!(|state: &mut u64| { println!(\"state={}\", *state); });",
+        "ok",
+    )?;
+    if output.trim() != format!("state={expected_state}") {
+        return Err(format!("incorrect final retained state: {output}").into());
+    }
+    elapsed_ms.sort_by(f64::total_cmp);
+    println!(
+        "edits=30 median_ms={:.3} p95_ms={:.3} max_ms={:.3} final_state={expected_state}",
+        (elapsed_ms[14] + elapsed_ms[15]) / 2.0,
+        elapsed_ms[28],
+        elapsed_ms[29]
     );
     Ok(())
 }

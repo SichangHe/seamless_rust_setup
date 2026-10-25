@@ -1,8 +1,8 @@
 # One file-based development control path
 (authored by agents unless marked 🧑)
 
-- 🧑 scope: "connect the existing file request and task endpoints before adding another runtime or compiler abstraction"
-  - source: [research agenda](research-agenda.md)
+- implementation scope: connect the existing file request and task endpoints
+  - agent recommendation in the [research agenda](research-agenda.md)
 - reproduction: `bash experiments/agent_dev/smoke.sh` from repository root
   - requires Linux, Rust, Cargo, Bash and `timeout`; dependencies must be cached or downloadable
   - [host and smoke client](../experiments/agent_dev/src/main.rs) reuse `pry` and `taskmon` in one process
@@ -42,4 +42,13 @@
   - trusted snippets must match the host build and return without retaining the borrow
     - inherits the [interactive boundary and capture limits](interactive.md) and [task observation and cancellation limits](task-monitor.md)
   - file server processes commands sequentially; responses accumulate until session cleanup; host has no compiler or snippet execution deadline
-  - next measurement: repeated representative edits with median/tail latency and instrumentation overhead
+  - instrumentation overhead and larger application edits have not been measured
+- repeated tiny edits: `bash experiments/agent_dev/smoke.sh bench`
+  - same host, including its deliberately non-yielding task; 30 different integer additions to retained state
+  - every tenth edit submits invalid Rust; final inspection checks state after the last compiler error
+  - summary includes successful mutations only; median averages the middle two samples and p95 uses nearest rank
+    - each sample wraps submission through reading the result and printing its timing; source construction and state validation are excluded
+    - initial host build is excluded; no separate snippet warmup
+  - measurements on 2026-10-24, x86_64 Linux, rustc 1.97.1, warm dependencies
+    - median 68.206 ms; p95 72.467 ms; maximum 72.598 ms; final state 465
+    - one 30-edit run under shared machine load; these tiny arithmetic edits do not represent arbitrary application changes

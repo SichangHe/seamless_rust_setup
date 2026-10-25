@@ -10,7 +10,7 @@ session=$(mktemp -d)
 target/debug/agent_dev host "$session" >"$session/host.log" 2>&1 &
 host_pid=$!
 trap 'kill "$host_pid" 2>/dev/null || true; wait "$host_pid" 2>/dev/null || true; rm -rf "$session"' EXIT
-if ! timeout 45s target/debug/agent_dev smoke "$session"; then
+if ! timeout 45s target/debug/agent_dev "${1:-smoke}" "$session"; then
     cat "$session/host.log" >&2
     exit 1
 fi
