@@ -5,6 +5,7 @@ Usage: `python3 pool_bench.py WORK_DIR [SETUP_NAME ...]`. Prints one line per me
 `WORK_DIR` receives generated projects and all build outputs; delete it afterwards.
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -106,9 +107,19 @@ class Disk:
     total_mb: int
 
 
-def build_env(setup: Setup, out: Path, project: str) -> dict[str, str]:
+def build_env(setup: Setup, out: Path) -> dict[str, str]:
     env = dict(os.environ)
-    env["CARGO_TARGET_DIR"] = str(out / ("target" if setup.shared_target else f"target_{project}"))
+    for key in (
+        "CARGO_BUILD_BUILD_DIR",
+        "RUSTC_WRAPPER",
+        "RUSTC_WORKSPACE_WRAPPER",
+        "CARGO_BUILD_RUSTC_WRAPPER",
+        "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+        "CARGO_TARGET_DIR",
+    ):
+        env.pop(key, None)
+    env["CARGO_INCREMENTAL"] = "0" if setup.sccache else "1"
+    env["CARGO_TERM_COLOR"] = "never"
     if setup.shared_build:
         env["CARGO_BUILD_BUILD_DIR"] = str(out / "build")
     if setup.sccache:
@@ -121,11 +132,12 @@ def build_env(setup: Setup, out: Path, project: str) -> dict[str, str]:
 
 
 def spawn(setup: Setup, work: Path, out: Path, project: str) -> subprocess.Popen[str]:
-    cmd = ["cargo", f"+{setup.toolchain}", "build", "--offline", *setup.z_flags]
+    target = out / ("target" if setup.shared_target else f"target_{project}")
+    cmd = ["cargo", f"+{setup.toolchain}", "build", "--offline", "--target-dir", str(target), *setup.z_flags]
     return subprocess.Popen(
         cmd,
         cwd=work / project,
-        env=build_env(setup, out, project),
+        env=build_env(setup, out),
         stderr=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         text=True,
@@ -160,17 +172,18 @@ def disk(setup: Setup, phase: str, out: Path) -> Disk:
 
 def sccache_server(setup: Setup, out: Path, action: str) -> None:
     _ = subprocess.run(
-        ["sccache", action], env=build_env(setup, out, "p1"), capture_output=True, check=False, timeout=10
+        ["sccache", action], env=build_env(setup, out), capture_output=True, check=False, timeout=10
     )
 
 
 def measure(setup: Setup, work: Path) -> None:
     out = work / "out" / setup.name
     for phase in ("sequential", "concurrent"):
+        if setup.sccache:
+            sccache_server(setup, out, "--stop-server")
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
         if setup.sccache:
-            sccache_server(setup, out, "--stop-server")
             sccache_server(setup, out, "--start-server")
         if phase == "sequential":
             # `p1` again at the end checks that building `p2`, `p3` did not invalidate it.
@@ -189,7 +202,7 @@ def measure(setup: Setup, work: Path) -> None:
                     print(result.result())
         if setup.sccache:
             stats = subprocess.run(
-                ["sccache", "--show-stats"], env=build_env(setup, out, "p1"),
+                ["sccache", "--show-stats"], env=build_env(setup, out),
                 capture_output=True, text=True, timeout=10,
             )
             print(stats.stdout, flush=True)
@@ -211,8 +224,15 @@ def generate(work: Path) -> None:
 
 
 def main() -> None:
-    work = Path(sys.argv[1]).resolve()
-    names = sys.argv[2:]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("work_dir", type=Path)
+    parser.add_argument("setups", nargs="*", help="setup names; defaults to the three stable Cargo setups")
+    args = parser.parse_args()
+    names = args.setups or ["separate", "shared_target_dir", "shared_build_dir"]
+    unknown = set(names) - {setup.name for setup in SETUPS}
+    if unknown:
+        parser.error(f"unknown setups: {', '.join(sorted(unknown))}")
+    work = args.work_dir.resolve()
     generate(work)
     for setup in SETUPS:
         if not names or setup.name in names:
