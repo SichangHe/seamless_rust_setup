@@ -56,7 +56,27 @@ Measured on this machine with rustc 1.97.1 and sccache 0.12.0:
 
 The Cargo-home move changes both source paths and Cargo environment variables. To distinguish those effects, the probe also invokes sccache/rustc directly from each memchr source directory with all `CARGO_` variables removed, the same relative `src/lib.rs` input, and otherwise identical arguments. That test likewise missed when the working directory changed and hit when repeated there. Identical remapping arguments did not enable reuse between the two source directories. Full per-case build output and cache counters remain in the work directory.
 
-This matches sccache 0.12.0's [cache-key implementation](https://github.com/mozilla/sccache/blob/v0.12.0/src/compiler/rust.rs#L1449-L1545): “The cwd of the compile. This will wind up in the rlib.” The same code notes: “TODO: there will be full paths here, it would be nice to normalize them so we can get cross-machine cache hits.” Rustc path remapping alone therefore does not make this tested cache portable across registry locations. A shared remote cache would still need matching compiler inputs, environment, and source-directory layout. A fixed build environment is a candidate solution, not something this test establishes across machines; no remote backend or second machine was used.
+This matches sccache 0.12.0's [cache-key implementation](https://github.com/mozilla/sccache/blob/v0.12.0/src/compiler/rust.rs#L1449-L1545): “The cwd of the compile. This will wind up in the rlib.” The same code notes: “TODO: there will be full paths here, it would be nice to normalize them so we can get cross-machine cache hits.” Rustc path remapping alone therefore does not make this tested cache portable across registry locations. A shared remote cache would still need matching compiler inputs, environment, and source-directory layout.
+
+## Reuse with a fixed directory layout
+
+The follow-up uses bwrap to map two independent copies of the Cargo home, registry sources, and project to the same paths under `/tmp/pool`. It compiles memchr in the producer, stops its sccache server, then copies only the cache into the consumer. Each build starts a new mount, process, and network namespace and a new sccache server; outputs use fresh directories. The compiler and system libraries remain read-only mounts from the same host. No Docker, remote service, or second machine is involved.
+
+After the portability probe above, run on Linux with working bwrap user namespaces:
+
+```sh
+timeout 120s python3 -u experiments/artifact_pool/isolated.py /tmp/pool-paths /tmp/pool-isolated
+```
+
+The new work directory retains both environments and per-case logs. With rustc 1.97.1 and sccache 0.12.0, the script verified these counters and exits unsuccessfully if they differ:
+
+- Producer cold build: one miss
+- Consumer with transferred cache: one hit
+- Consumer with `-Copt-level=1`: one miss; repeating it: one hit
+- Consumer after adding an exported constant to its private memchr source copy: one miss; repeating it: one hit
+- Consumer after restoring the original source and flags: one hit from the transferred entry
+
+This validates cache reuse between local isolated environments when their visible paths match, including invalidation for the tested source and flag changes. It does not establish portability across hosts, compilers, native libraries, or build-script inputs. The study supports a concrete route to global reuse: share a cache among trusted producers and consumers using a fixed build environment. Arbitrary developer directory layouts did not work in our tests. A public service would still require its distribution and trust design; implementing one is separate from these results.
 
 ## Existing mechanisms and global-pool proposal
 
@@ -66,4 +86,4 @@ Cargo's [build cache documentation](https://doc.rust-lang.org/cargo/reference/bu
 
 Agent recommendation: begin with a trusted same-user shared intermediate directory and measure contention. Keep final executables separate to avoid projects overwriting identically named outputs. A global distributed public pool is a separate proposal: artifacts need matching compiler, target, dependency versions/features, code-generation options, and build-script inputs. Matching crate name/version alone is insufficient. Reusing native code also introduces a trust boundary; the pool must authenticate producers or rebuild/verify artifacts before consumption. These requirements have not been implemented or evaluated here.
 
-Further agent recommendations are testing a fixed source layout across machines, changed toolchains, build-script environment changes, and bounded cache eviction. Measure total storage, including any second cache.
+Further agent recommendations, not requirements of this study, are testing the fixed layout across machines, changed toolchains, build-script environment changes, and bounded cache eviction. Measure total storage, including any second cache.

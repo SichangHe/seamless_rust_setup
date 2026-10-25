@@ -28,13 +28,15 @@ def run(cmd: list[str], env: dict[str, str], cwd: Path) -> str:
     return result.stdout + result.stderr
 
 
-def probe(case: str, cmd: list[str], env: dict[str, str], cwd: Path, work: Path) -> None:
+def probe(case: str, cmd: list[str], env: dict[str, str], cwd: Path, work: Path) -> Result:
     _ = run(["sccache", "--zero-stats"], env, work)
     build = run(cmd, env, cwd)
     stats = run(["sccache", "--show-stats"], env, work)
     _ = (work / f"{case}.log").write_text(build + stats)
     counts = {match[1]: int(match[2]) for match in re.finditer(r"^Cache (hits|misses)\s+(\d+)$", stats, re.M)}
-    print(Result(case, counts["hits"], counts["misses"]), flush=True)
+    result = Result(case, counts["hits"], counts["misses"])
+    print(result, flush=True)
+    return result
 
 
 def main() -> None:
@@ -86,7 +88,7 @@ memchr = "=2.8.3"
         for case, home, flags in cases:
             cargo_env = env | {"CARGO_HOME": str(homes[home]), "CARGO_ENCODED_RUSTFLAGS": "\x1f".join(flags)}
             cmd = ["cargo", "build", "--offline", "--locked", "-p", "memchr", "--target-dir", str(work / case)]
-            probe(case, cmd, cargo_env, work, work)
+            _ = probe(case, cmd, cargo_env, work, work)
         direct_env = {key: value for key, value in env.items() if not key.startswith("CARGO_")}
         for case, home, flags in cases[:4] + cases[-2:]:
             case = f"direct_{case}"
@@ -97,7 +99,7 @@ memchr = "=2.8.3"
                 "--edition=2021", "--emit=link,dep-info", "--out-dir", str(out),
                 "--cfg", 'feature="std"', "--cfg", 'feature="alloc"', *flags, "src/lib.rs",
             ]
-            probe(case, cmd, direct_env, sources[home], work)
+            _ = probe(case, cmd, direct_env, sources[home], work)
     finally:
         _ = run(["sccache", "--stop-server"], env, work)
 
