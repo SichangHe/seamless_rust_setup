@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export CARGO_BUILD_BUILD_DIR="${CARGO_BUILD_BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/cargo/shared-build}"
+exec cargo run --quiet --manifest-path "$script_dir/Cargo.toml" -- "$@"

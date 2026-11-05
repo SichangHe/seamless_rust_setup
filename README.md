@@ -5,7 +5,7 @@
 
 This repository studies that goal through runnable experiments. It measures rebuild latency and dependency costs, loads edited Rust files into a paused program, reloads dynamic libraries, and inspects or cancels registered asynchronous tasks. These are research prototypes, not a complete replacement Rust environment.
 
-Start with the [findings and setup](docs/index.md). Each study separates measurements, source evidence, limitations, and proposed work:
+Start with the [practical guide and script template](docs/start-here.md) to use this work in a new task. For measurements and prototypes, read the [findings and setup](docs/index.md). Each study separates measurements, source evidence, limitations, and proposed work:
 
 - [compilation speed](docs/compile-speed.md)
 - [shared compilation artifacts](docs/artifact-pool.md)

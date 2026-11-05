@@ -1,0 +1,13 @@
+[package]
+name = "rust-script"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+strip = "debuginfo"
