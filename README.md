@@ -15,6 +15,14 @@ Start with the [practical guide and script template](docs/start-here.md) to use 
 - [integrated file and task control](docs/agent-dev.md)
 - [dependency and binary size](docs/dependency-bloat.md)
 
+## Install the build settings
+
+`setup/install.sh` adds smaller debug info and moves build intermediates out of each repository into `~/.cargo/build/`, by appending a marked block to Cargo's user config. `setup/uninstall.sh` removes only that block. Measured effect on four real workspaces: build output 1.7-2.5x smaller, edit rebuilds 9-34% faster; panics keep file and line, but debuggers lose local variables. Requires Cargo 1.91 or newer. Measurements: [rust_build_eval](https://github.com/SichangHe/rust_build_eval).
+
+```sh
+setup/install.sh    # undo: setup/uninstall.sh
+```
+
 The experiments target Linux. Each study gives its own prerequisites and commands. Toolchains, dependency features, and linkers affect the results; a warm build does not imply that arbitrary changes compile instantly.
 
 ## Layout

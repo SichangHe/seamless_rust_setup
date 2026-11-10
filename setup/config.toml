@@ -1,0 +1,12 @@
+# measurements: https://github.com/SichangHe/rust_build_eval
+[build]
+# build intermediates under Cargo's home, one dir per workspace; final binaries stay in ./target
+build-dir = "{cargo-cache-home}/build/{workspace-path-hash}"
+
+[profile.dev]
+# panics/backtraces keep file:line; debuggers lose locals. full debug: CARGO_PROFILE_DEV_DEBUG=2
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+debug = false
