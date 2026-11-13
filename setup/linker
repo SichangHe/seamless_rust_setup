@@ -1,0 +1,23 @@
+#!/bin/sh
+# Cargo `linker` for dev builds (output under `*/debug/*`): link with wild if installed next to this script, else with the unchanged default `cc` line.
+# Wild is used via `cc -B<dir>` where <dir>/ld is wild; rustc's `-fuse-ld=lld` and `-B.../gcc-ld` args are dropped for it.
+# If wild fails, the link is retried with the default linker.
+wild_dir="$(dirname "$0")/bin"
+
+link_wild() {
+    for a in "$@"; do
+        shift
+        case "$a" in -fuse-ld=*|-B*/gcc-ld) ;; *) set -- "$@" "$a" ;; esac
+    done
+    cc -B"$wild_dir" "$@"
+}
+
+prev=
+for a in "$@"; do
+    if [ "$prev" = -o ] && [ -x "$wild_dir/ld" ]; then
+        case "$a" in */debug/*) link_wild "$@" && exit 0; echo "seamless_rust_setup: wild failed, retrying with the default linker" >&2 ;; esac
+        break
+    fi
+    prev=$a
+done
+exec cc "$@"

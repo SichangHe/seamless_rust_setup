@@ -17,7 +17,7 @@ Start with the [practical guide and script template](docs/start-here.md) to use 
 
 ## Install the build settings
 
-`setup/install.sh` adds smaller debug info and moves build intermediates out of each repository into `~/.cargo/build/`, by appending a marked block to Cargo's user config. `setup/uninstall.sh` removes only that block. Measured effect on four real workspaces: build output 1.7-2.5x smaller, edit rebuilds 9-34% faster; panics keep file and line, but debuggers lose local variables. Requires Cargo 1.91 or newer. Measurements: [rust_build_eval](https://github.com/SichangHe/rust_build_eval).
+`setup/install.sh` adds smaller debug info and moves build intermediates out of each repository into `~/.cargo/build/`, by appending a marked block to Cargo's user config. On Linux x86_64/aarch64 it also installs the [wild](https://github.com/davidlattimore/wild) linker (pinned 0.10.0, SHA-256 checked, or a `wild` of that version already on `PATH`) into `~/.cargo/seamless_rust_setup/`; `setup/linker` then links dev builds (output under `debug/`, including build scripts and proc macros) with wild. Release builds, a missing or failing wild, other platforms, and an existing `[target.<triple>]` table in your config all keep the default linker. `setup/uninstall.sh` removes the block and that directory. Re-running `install.sh` upgrades. Measured effect on four real workspaces: build output 1.7-2.5x smaller, edit rebuilds 9-34% faster (wild alone: 12-34% faster edit rebuilds; its test-suite check is in rust_build_eval); panics keep file and line, but debuggers lose local variables. Requires Cargo 1.91 or newer. Measurements: [rust_build_eval](https://github.com/SichangHe/rust_build_eval).
 
 ```sh
 setup/install.sh    # undo: setup/uninstall.sh
